@@ -1,0 +1,100 @@
+== What
+
+A gem to create in graph indices for neo4j in JRuby.
+
+== Why
+
+Sometimes it is not enough to rely on the speed of traversals, especially when you have a flat graph structure.
+With a flat graph structure I mean for example having one node having a huge number of relationships instead of
+more nodes having fewer relationships.
+
+== How
+
+By instead organizing the nodes in a parallel tree of nodes it will become much faster to search using that tree
+(e.g. a Neo4j traversal with binary search).
+
+
+== Requirements
+
+* Possible to add index and query on several properties
+* Possible to insert a lot of data fast.
+
+== Api
+
+I'm thinking of implenting a range tree similar data structure - http://en.wikipedia.org/wiki/Range_tree
+
+
+  class Thing
+     include Neo4jIndex::RangeTree
+     property :length, :type => Float
+     property :time, :type => Fixnum
+
+     index :length, :type => :range_tree, :granularity => 0.1, :cluster => 10
+     index :time, :type => :range_tree, :granularity => 10, :cluster => 10
+
+  end
+
+  Thing.new(:length = 42, :time => 5)
+  Thing.find(:length => (40..50), :time => 4) # return all things with length between 40 and 40 and the exact time == 5
+
+The granularity parameter sets the lowest level of range that will be indexed. All values lower than this will be put under the same tree node.
+The cluster size specifies the size different between the range of values that the children and parent nodes.
+It is also possible to specify a fix set of levels. For example, level one nodes in the tree should contain all the time properties for 1 year
+and have 12 children node each representing a month, and so on.
+
+  index :time, :type => :range_tree, :granularity => 10, :cluster => [60*60*24*365, 60*60*24*12, ...]
+
+== Design
+
+All ruby instances that uses the Neo4j::NodeMixin (and Neo4j::Rails::Model) are linked to a RuleNode which represent the class.
+When a range_tree is declared it will create a new node representing the range tree for that class.
+
+
+  Neo4j.ref_node  --> Thing(RuleNode) --*> Thing instances  <*------+
+                        |                                           |
+                        +---->RangeTree ---------> the range tree --+
+
+When a new Thing instance is created it will use the neo4j event framework to trigger an insert into the range tree.
+
+== Implementation
+
+The difference between a segment tree and our range tree is that each node can have several parents - one for each property that is indexed.
+Let say we have the following index:
+
+  index :length, :type => :range_tree, :granularity => 1, :cluster => 10
+  index :time, :type => :range_tree, :granularity => 1, :cluster => 10
+
+When the first thing node is created it will trigger an insert on the Neo4jIndex::RangeTree#insert method.
+If the range tree node has not been created already it will be created and attached to the Thing class rule node.
+The insert method will create a root node that has three properties, length, time and level.
+The level property will have value 0 indicating that it is a leaf node in the tree.
+The length and time property values are caluculated using this method:
+
+  index_value = begin
+    step_size = granularity * cluster ** level
+    ((value.to_f + step_size/2) / step_size).floor
+  end
+
+To check if a node in the tree contains a value we only have to compare the index values.
+After the leaf node has been created it will create a relationship between the leaf node and the inserter thing node
+(so that we can find that thing node).
+
+We now have an index tree with just one leaf node. Let say that we insert another thing node.
+We then create new index values for the lengt and time properties and compare then with the only leaf node in the tree.
+If one of the index values are different then we have to create a parent index node for that property.
+Let say it was the length property that had a different index value. We then need to create a parent index node
+with a level 1 for the length property. We calculate new index values for the time and length properties and compare those
+values with the node we want to insert. If it is the same then we will create a new children node.
+
+
+
+
+
+
+
+
+
+
+
+
+
