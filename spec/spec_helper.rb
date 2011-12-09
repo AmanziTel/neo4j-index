@@ -85,12 +85,10 @@ def rm_db_storage
 end
 
 def clean_db
-  puts "CLEAN DB"
   finish_tx
   Neo4j::Transaction.run do
     Neo4j._all_nodes.each { |n| n.del unless n.neo_id == 0 }
   end
-  puts "Cleaned db done"
 end
 
 RSpec.configure do |c|
