@@ -5,11 +5,13 @@ module Neo4jIndex
       attr_accessor :origin
       attr_reader :granularity, :scale, :property
 
-      def initialize(property, granularity = 1, scale = 10)
+      def initialize(index_node, property, granularity = 1, scale = 10)
         @granularity = granularity
         @scale = scale
         @child_rel = "_rangetree_#{property}".to_sym
         @property = property
+        @index_node = index_node
+        @origin = index_node[:"rangetree_origin_#{property}"]
       end
 
       def step_size(level)
@@ -52,12 +54,13 @@ module Neo4jIndex
         level = child[:level] + 1
         parent = create_index_node(child[:index_value], level)
         Neo4j::Relationship.new(@child_rel, parent, child)
-        puts "  create_parent #{level}"
+#        puts "  create_parent #{level} rel '#{@child_rel}' between #{parent.neo_id} and #{child.neo_id}"
         parent
       end
 
+
       def create_first(value)
-        @origin = value
+        @origin ||= @index_node[:"rangetree_origin_#{property}"] = value
         create_index_node(0, index_value_for(0, value))
       end
 
@@ -66,7 +69,7 @@ module Neo4jIndex
       end
 
       def find_children(index_node)
-        index_node._rels(:outgoing, :@child_rel).collect { |r| r._end_node }
+        index_node._rels(:outgoing, @child_rel).collect { |r| r._end_node }
       end
 
       def find_or_create_parent(item, start_node)
@@ -79,13 +82,11 @@ module Neo4jIndex
         curr
       end
 
-
-
       def include_value?(curr, value)
         level = curr[:level]
-        x = index_value_for(level, value) == curr[:index_value]
-        puts "include_value #{level}, #{x} - bounding #{bounding_box_for(level, index_value_for(level, value)).inspect} : #{bounding_box_for(level, curr[:index_value]).inspect}"
-        x
+        index_value_for(level, value) == curr[:index_value]
+        #puts "include_value #{value}, #{index_value_for(level, value) } == #{curr[:index_value]} lv: #{level}, #{x} - bounding #{bounding_box_for(level, index_value_for(level, value)).inspect} : #{bounding_box_for(level, curr[:index_value]).inspect}"
+        #x
       end
 
     end

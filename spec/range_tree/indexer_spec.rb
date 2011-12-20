@@ -2,7 +2,8 @@ require 'spec_helper'
 
 describe Neo4jIndex::RangeTree::Indexer, :type => :transactional do
   before(:each) do
-    @index = Neo4jIndex::RangeTree::Indexer.new(:time)
+    @node = {}
+    @index = Neo4jIndex::RangeTree::Indexer.new(@node, :time)
   end
 
   #describe ".create_child" do
@@ -99,45 +100,50 @@ describe Neo4jIndex::RangeTree::Indexer, :type => :transactional do
   describe ".include_value?" do
     it "should " do
       @index.origin = 0
-      index_value = @index.index_value_for(1, 10)
-      puts "Bounding box #{index_value} - #{@index.bounding_box_for(1, index_value).inspect}"
-      puts "Index value for  #{@index.index_value_for(1, 42)}"
 
-      index_value = @index.index_value_for(2, 10)
-      puts "Bounding box #{index_value} - #{@index.bounding_box_for(2, index_value).inspect}"
-      puts "Index value for  #{@index.index_value_for(2, 42)}"
+      # index value 42 with level 0 gives 45-46 range
+      i1 = @index.index_value_for(0, 42) # the index of the index_node
+      #i2 = @index.index_value_for(0, 44) # the index of a different node
+      @index.include_value?({:level => 0, :index_value => i1}, 44).should be_false
 
-      puts @index.include_value?({:level => 1, :index_value => index_value}, 42)
-      puts @index.include_value?({:level => 2, :index_value => index_value}, 42)
-
+      # but parent should include it
+      i1 = @index.index_value_for(1, 42) # the index of the index_node
+      #i2 = @index.index_value_for(1, 44) # the index of a different node
+      @index.include_value?({:level => 1, :index_value => i1}, 44).should be_true
     end
   end
 
-  #describe ".find_or_create_parent" do
-  #  context "when there is no parent" do
-  #    it "should create the parent if the current node does not contain the value" do
-  #      child = Neo4j::Node.new(:level => 0, :index_value => 3)
-  #      parent = @index.find_or_create_parent({:time => 8}, child)
-  #      @index.find_parent(child).should == parent
-  #    end
-  #
-  #    it "should create several parent index nodes until it gets one that includes the value" do
-  #      child = Neo4j::Node.new(:level => 0, :index_value => 3)
-  #      puts "========================="
-  #      parent2 = @index.find_or_create_parent({:time => 10}, child) # get top parent
-  #      parent1 = @index.find_children(parent2).first  # # get child of that parent
-  #      @index.find_children(parent1).first.should == child # the child of that parent should be the child
-  #    end
-  #
-  #  end
-  #
-  #  context "when there is a parent containing the value" do
-  #    it "should find the parent" do
-  #      child = Neo4j::Node.new(:level => 0, :index_value => 3)
-  #      parent = @index.create_parent(child)
-  #      @index.find_parent(child).should == parent
-  #    end
-  #  end
+  describe ".find_or_create_parent" do
 
+    context "when there is no parent" do
+
+      it "should create the parent if the current node does not contain the value" do
+        @index.origin = 8
+        child = Neo4j::Node.new(:level => 0, :index_value => 0) # first child
+        parent = @index.find_or_create_parent({:time => 10}, child)
+        @index.find_parent(child).should == parent
+      end
+
+      it "should create several parent index nodes until it gets one that includes the value" do
+        @index.origin = 8
+        child = Neo4j::Node.new(:level => 0, :index_value => 0)
+        parent2 = @index.find_or_create_parent({:time => 50}, child) # get top parent
+        parent1 = @index.find_children(parent2).first # # get child of that parent
+        parent1.should_not be_nil
+        @index.find_children(parent1).first.should == child # the child of that parent should be the child
+      end
+
+    end
+
+    context "when there is a parent containing the value" do
+      it "should find the parent" do
+        child = Neo4j::Node.new(:level => 0, :index_value => 3)
+        parent = @index.create_parent(child)
+        @index.find_parent(child).should == parent
+      end
+    end
+
+
+  end
 
 end

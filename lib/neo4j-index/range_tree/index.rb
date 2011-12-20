@@ -3,13 +3,21 @@ module Neo4jIndex
     class Index
       attr_reader :indexers
 
-      def new(index_spec)
+      def initialize(index_spec)
         @indexers = {}
         index_spec.keys.each do |key|
           @indexers[key] = Indexer.new(index_spec[key][:granularity], index_spec[key][:cluster])
         end
       end
 
+
+      def insert_first(item)
+        @indexers.each_pair do |key, indexer|
+          value = item[key]
+          indexer.create_first(value, item)
+        end
+
+      end
 
       def insert(item)
         @indexers.each_pair do |key, indexer|
