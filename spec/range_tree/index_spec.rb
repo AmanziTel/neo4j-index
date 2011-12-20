@@ -35,6 +35,17 @@ describe Neo4jIndex::RangeTree::Index, :type => :transactional do
   end
 
 
+  describe "create_parent" do
+    context "parents for :age" do
+      it "asd " do
+        first = range_tree_two_dim.insert_first({:age => 5, :size => 2})
+        age_parent = range_tree_two_dim.create_parent(:age, first)
+        age_parent['l_age'].should == 1
+      end
+    end
+
+  end
+
   describe "insert_first" do
 
     context "first index node" do
@@ -43,10 +54,6 @@ describe Neo4jIndex::RangeTree::Index, :type => :transactional do
       it "creates a relationship between the root and the first index node" do
         root.should have_outgoing(:range_tree)
         root.outgoing(:range_tree).should include(subject)
-      end
-
-      it "level is zero" do
-        subject[:level] == 0
       end
 
       it "has an index on age" do

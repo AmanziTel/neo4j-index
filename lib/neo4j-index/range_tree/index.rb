@@ -26,10 +26,21 @@ module Neo4jIndex
         end
         @current_index_node = Neo4j::Node.new(props )
         Neo4j::Relationship.new(:range_tree, @root, @current_index_node)
-        puts "Connected #{@root.neo_id} with #{@current_index_node.neo_id}"
         @current_index_node
       end
 
+
+      def create_parent(key, child_index_node)
+        indexer = @indexers[key]
+        props = child.props
+        level = props["l_#{key}"] += 1
+        parent = create_index_node(child[:index_value], level)
+        Neo4j::Relationship.new(@child_rel, parent, child)
+#        puts "  create_parent #{level} rel '#{@child_rel}' between #{parent.neo_id} and #{child.neo_id}"
+        parent
+
+        indexer.create_parent(child_index_node)
+      end
 
       def include_item?(item, index_node = @current_index_node)
         not_found = @indexers.values.find do |indexer|
