@@ -76,6 +76,7 @@ RSpec::Matchers.define :have_outgoing do |relationship|
     else
       rels.size > 0
     end
+
   end
 end
 

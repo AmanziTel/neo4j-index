@@ -2,8 +2,7 @@ module Neo4jIndex
   module RangeTree
     class Indexer
 
-      attr_accessor :origin
-      attr_reader :granularity, :scale, :property
+      attr_reader :granularity, :scale, :property, :origin
 
       def initialize(index_node, property, granularity = 1, scale = 10)
         @granularity = granularity
@@ -16,6 +15,10 @@ module Neo4jIndex
 
       def step_size(level)
         @granularity * @scale ** level
+      end
+
+      def origin=(value)
+        @origin = @index_node[:"rangetree_origin_#{property}"] = value
       end
 
       def index_value_for(level, value)
