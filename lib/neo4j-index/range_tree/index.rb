@@ -1,22 +1,22 @@
 module Neo4jIndex
   module RangeTree
     class Index
-      attr_reader :indexers, :current_index_node, :root
+      attr_reader :indexers, :root, :source_node
 
-      def initialize(root, index_spec)
+      def initialize(source_node, index_spec)
         @indexers = {}
         index_spec.keys.each do |key|
-          @indexers[key] = Indexer.new(root, key, index_spec[key][:granularity], index_spec[key][:cluster])
+          @indexers[key] = Indexer.new(source_node, key, index_spec[key][:granularity], index_spec[key][:cluster])
         end
 
-        @root = root
+        @source_node = source_node
       end
 
       def indexed_props
         @indexers.keys
       end
 
-      def insert_first(item)
+      def create_first(item)
         props = {}
         @indexers.each_pair do |key, indexer|
           value = item[key]
@@ -24,63 +24,86 @@ module Neo4jIndex
           props["l_#{key}"] = 0
           props["i_#{key}"] = 0
         end
-        @current_index_node = Neo4j::Node.new(props )
-        Neo4j::Relationship.new(:range_tree, @root, @current_index_node)
-        @current_index_node
+        @root = Neo4j::Node.new(props)
+        Neo4j::Relationship.new(:range_tree, @source_node, @root)
+        @root
       end
 
 
-      def create_parent(key, child_index_node)
+      def create_parent(key, child)
         indexer = @indexers[key]
         props = child.props
-        level = props["l_#{key}"] += 1
-        parent = create_index_node(child[:index_value], level)
-        Neo4j::Relationship.new(@child_rel, parent, child)
-#        puts "  create_parent #{level} rel '#{@child_rel}' between #{parent.neo_id} and #{child.neo_id}"
+        props["l_#{key}"] += 1
+        props.delete('_neo_id')
+        parent = Neo4j::Node.new(props)
+        Neo4j::Relationship.new("_child_#{key}", parent, child)
         parent
-
-        indexer.create_parent(child_index_node)
       end
 
-      def include_item?(item, index_node = @current_index_node)
-        not_found = @indexers.values.find do |indexer|
+      # creates all parents for all  properties we should index
+      def create_all_parents(item, child)
+        curr_parent = child
+        while (key = find_first_none_matching_index_key(item, curr_parent))
+          curr_parent = create_parent(key, curr_parent)
+        end
+
+        # if the child was the root then we need to replace the root
+        puts "create_all_parents root: #{@root.props.inspect}, child = #{child.props.inspect}, curr_parent = #{curr_parent.props.inspect}"
+        if @root == child && curr_parent != child
+          rel = @source_node._rel(:outgoing, :range_tree)
+          rel.del
+          @root = curr_parent
+          Neo4j::Relationship.new(:range_tree, @source_node, @root)
+          puts "New root #{@root.props.inspect}"
+        end
+      end
+
+      def find_first_none_matching_index_key(item, index_node = @root)
+        @indexers.keys.find do |key|
+          indexer = @indexers[key]
           key = indexer.property
           level = index_node["l_#{key}"]
           value = item[key]
           index_value = indexer.index_value_for(level, value)
-          puts "key=#{key}, value = #{value}, index_value #{index_value} == #{index_node["i_#{key}"]}, props: #{index_node.props.inspect}"
           index_node["i_#{key}"] != index_value
         end
-
-        ! not_found
       end
 
-      def find_or_create_parent(item)
-        curr = @current_index_node
+      def include_item?(item, index_node = @root)
+        ! find_first_none_matching_index_key(item, index_node)
       end
 
       def insert(item)
-        @indexers.each_pair do |key, indexer|
-          value = item[key]
-
-          # search as high as necessary to find a index node that covers this value
-          index_node = @current_index_node ? indexer.find_or_create_parent(value, item) : indexer.create_first(value, item)
-
-          # now step down building index all the way to the bottom
-          while (index_node[:level] > 0)
-            # First search the index node tree for existing child index nodes that match
-            # If no child index node was found, create one and link it into the tree
-            child = indexer.find_child(index_node, values) || indexer.create_child(index_node, values, item)
-
-            # Finally step down one level and repeat until we're at the bottom
-            index_node = child
-          end
-
-          indexer.add_item(index_node, item)
+        if @root
+          # does current index node include the value ?
+          create_all_parents(item, @root)
+        else
+          create_first(item)
         end
-
-        @current_index_node = index_node
       end
+
+      #def insert2(item)
+      #  @indexers.each_pair do |key, indexer|
+      #    value = item[key]
+      #
+      #    # search as high as necessary to find a index node that covers this value
+      #    index_node = @root ? indexer.find_or_create_parent(value, item) : indexer.create_first(value, item)
+      #
+      #    # now step down building index all the way to the bottom
+      #    while (index_node[:level] > 0)
+      #      # First search the index node tree for existing child index nodes that match
+      #      # If no child index node was found, create one and link it into the tree
+      #      child = indexer.find_child(index_node, values) || indexer.create_child(index_node, values, item)
+      #
+      #      # Finally step down one level and repeat until we're at the bottom
+      #      index_node = child
+      #    end
+      #
+      #    indexer.add_item(index_node, item)
+      #  end
+      #
+      #  @root = index_node
+      #end
 
     end
   end
